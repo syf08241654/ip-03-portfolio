@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="author" content="宋一凡">
+<title>作品三 · 星屑猎手（Three.js 小游戏）· 宋一凡</title>
+<style>
+  /* 画布铺满、无滚动条 */
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    background: #0a0e1c;
+    font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    color: #e8f0ff;
+    user-select: none; -webkit-user-select: none;
+  }
+  #stage { position: relative; width: 100%; height: 100%; }
+  canvas { display: block; }
+
+  /* ---------- HUD ---------- */
+  .hud {
+    position: absolute; inset: 0; pointer-events: none;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 18px 22px; font-variant-numeric: tabular-nums;
+  }
+  .hud .stat { font-size: 12px; letter-spacing: 2px; color: rgba(232,240,255,.5); }
+  .hud .num { font-size: 26px; font-weight: 700; font-family: ui-monospace, Consolas, monospace; }
+  .hud .score .num { color: #ffd166; text-shadow: 0 0 16px rgba(255,209,102,.5); }
+  .hud .time .num { color: #e8f0ff; }
+  .hud .time .num.danger { color: #ff4d6d; text-shadow: 0 0 16px rgba(255,77,109,.6); }
+  .hud .lives { display: flex; gap: 8px; margin-top: 4px; justify-content: flex-end; }
+  .hud .life {
+    width: 12px; height: 12px; background: #ff4d6d;
+    transform: rotate(45deg); box-shadow: 0 0 10px rgba(255,77,109,.8);
+    transition: all .25s;
+  }
+  .hud .life.off { background: #232c44; box-shadow: none; transform: rotate(45deg) scale(.7); }
+
+  /* ---------- 遮罩 ---------- */
+  .overlay {
+    position: absolute; inset: 0; z-index: 5;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; text-align: center; padding: 24px;
+    background: radial-gradient(circle at 50% 40%, rgba(10,14,28,.72), rgba(5,8,16,.94));
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    transition: opacity .3s;
+  }
+  .overlay.hide { opacity: 0; pointer-events: none; }
+  .overlay h1 {
+    font-size: 38px; letter-spacing: 6px; margin: 0;
+    background: linear-gradient(180deg, #fff, #ffd166 75%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 22px rgba(255,209,102,.45));
+  }
+  .overlay .sub { font-size: 11px; letter-spacing: 5px; color: rgba(232,240,255,.45); margin-top: -6px; }
+  .overlay .rules { font-size: 13px; line-height: 2.1; color: rgba(232,240,255,.75); }
+  .overlay .rules b { color: #ffd166; font-weight: 600; }
+  .overlay .rules i { color: #ff4d6d; font-style: normal; }
+  .overlay .rules .key {
+    display: inline-block; padding: 1px 8px; margin: 0 2px; border-radius: 5px;
+    border: 1px solid rgba(232,240,255,.25); font-size: 11px; font-family: ui-monospace, monospace;
+  }
+  .overlay button {
+    margin-top: 12px; padding: 14px 46px; border: none; border-radius: 40px;
+    cursor: pointer; font-family: inherit;
+    font-size: 15px; font-weight: 700; letter-spacing: 4px; color: #1a1204;
+    background: linear-gradient(135deg, #ffe9b0, #ffd166 50%, #e8a93e);
+    box-shadow: 0 0 26px rgba(255,209,102,.5);
+    transition: transform .12s, box-shadow .2s;
+  }
+  .overlay button:hover { transform: translateY(-2px); box-shadow: 0 0 40px rgba(255,209,102,.7); }
+  .overlay .result { display: flex; gap: 34px; margin: 8px 0; }
+  .overlay .result div { display: flex; flex-direction: column; gap: 4px; }
+  .overlay .result span { font-size: 10px; letter-spacing: 2px; color: rgba(232,240,255,.45); }
+  .overlay .result strong { font-size: 28px; font-family: ui-monospace, monospace; color: #ffd166; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <!-- 顶部 HUD -->
+  <div class="hud">
+    <div class="score"><div class="stat">得分 SCORE</div><div class="num" id="hudScore">0</div></div>
+    <div class="time"><div class="stat">剩余时间 TIME</div><div class="num" id="hudTime">60</div></div>
+    <div class="lives-box">
+      <div class="stat" style="text-align:right">生命 LIVES</div>
+      <div class="lives" id="hudLives"></div>
+    </div>
+  </div>
+
+  <!-- 开始遮罩 -->
+  <div class="overlay" id="ovStart">
+    <h1>星屑猎手</h1>
+    <div class="sub">STARDUST HUNTER · THREE.JS</div>
+    <p class="rules">
+      移动 <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> 或方向键（手机可直接在地面拖动）<br>
+      收集 <b>金色星屑</b> +1 分 · 避开 <i>红色干扰者</i> · 60 秒内冲高分
+    </p>
+    <button id="btnStart">开 始</button>
+  </div>
+
+  <!-- 结束遮罩 -->
+  <div class="overlay hide" id="ovOver">
+    <h1 style="font-size:32px">时间到</h1>
+    <div class="result">
+      <div><span>本局得分</span><strong id="finalScore">0</strong></div>
+      <div><span>历史最高</span><strong id="bestScore">0</strong></div>
+    </div>
+    <button id="btnRetry">再 来 一 局</button>
+  </div>
+</div>
+
+<!-- Three.js r128（CDN 引入，MIT 协议，版权归其作者） -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script>
+/*
+ * 《星屑猎手》 —— Three.js 小游戏
+ * 作者：宋一凡（GitHub: songyifan）
+ *
+ * 玩法：60 秒限时。WASD/方向键（或触屏拖动）驾驶光球，
+ *       收集金色星屑 +1 分，碰到红色干扰者掉一条命，共 3 条命。
+ *
+ * 技术要点：
+ *   - 第三人称跟随相机：位置向玩家 lerp，带落地阻尼，画面稳定不抖
+ *   - 敌人沿固定轴正弦巡逻（确定性运动，不随机乱跑）
+ *   - 触屏：Raycaster 把手指位置投到地面，光球朝落点加速
+ *   - 受击无敌帧 + 相机震动，反馈明确
+ */
+(function () {
+  'use strict';
+
+  // ---------- 常量 ----------
+  var ARENA = 14;                 // 场地半径（正方形边长的一半）
+  var GAME_TIME = 60;             // 一局时长（秒）
+  var GEM_COUNT = 12;             // 星屑数量
+  var ENEMY_COUNT = 6;            // 干扰者数量
+  var MAX_SPEED = 12;             // 玩家速度上限
+  var BEST_KEY = 'stardustBest';
+
+  var COLOR = {
+    bg: 0x0a0e1c, floor: 0x0d1326, gridA: 0x24304f, gridB: 0x141d36,
+    player: 0x4df0ff, gem: 0xffd166, enemy: 0xff4d6d
+  };
+
+  // ---------- 全局状态 ----------
+  var scene, camera, renderer, clock;
+  var player, playerLight, playerVel = { x: 0, z: 0 };
+  var gems = [], enemies = [];
+  var state = 'ready';            // ready | playing | over
+  var score = 0, lives = 3, timeLeft = GAME_TIME;
+  var invincible = 0;             // 受击后的无敌时间（秒）
+  var shake = 0;                  // 相机震动强度
+  var elapsed = 0;                // 累计时间（驱动巡逻与旋转）
+  var best = 0;
+  try { best = parseInt(localStorage.getItem(BEST_KEY) || '0', 10) || 0; } catch (e) {}
+
+  var keys = {};                  // 键盘按下状态
+  var pointerDown = false;        // 触屏/鼠标拖动中
+  var pointerTarget = null;       // 手指指向的地面坐标
+  var raycaster = null, groundPlane = null, pointerNDC = null;
+
+  // ---------- DOM ----------
+  var hudScore = document.getElementById('hudScore');
+  var hudTime = document.getElementById('hudTime');
+  var hudLives = document.getElementById('hudLives');
+  var ovStart = document.getElementById('ovStart');
+  var ovOver = document.getElementById('ovOver');
+
+  // ---------- 音效（WebAudio 合成，无外部素材） ----------
+  var audioCtx = null;
+  function beep(freq, dur, type, vol, slideTo) {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      var t = audioCtx.currentTime;
+      var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = type || 'sine';
+      o.frequency.setValueAtTime(freq, t);
+      if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(30, slideTo), t + dur);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol || 0.06, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t); o.stop(t + dur + 0.02);
+    } catch (e) {}
+  }
+  var SFX = {
+    collect: function () { beep(880, 0.12, 'triangle', 0.07, 1400); },
+    hit: function () { beep(160, 0.3, 'sawtooth', 0.09, 60); },
+    start: function () { beep(520, 0.14, 'triangle', 0.06, 900); },
+    over: function () { beep(360, 0.6, 'sine', 0.08, 90); }
+  };
+
+  // ---------- 初始化场景 ----------
+  function init() {
+    var stage = document.getElementById('stage');
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(COLOR.bg);
+    scene.fog = new THREE.Fog(COLOR.bg, 22, 55);   // 雾效营造地平线纵深感
+
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 120);
+    camera.position.set(0, 10, 12);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    stage.appendChild(renderer.domElement);
+
+    clock = new THREE.Clock();
+
+    // 灯光：环境光 + 一盏方向光（配合材质自发光，画面稳定不闪）
+    scene.add(new THREE.AmbientLight(0x6677aa, 0.75));
+    var sun = new THREE.DirectionalLight(0xffffff, 0.45);
+    sun.position.set(6, 12, 4);
+    scene.add(sun);
+
+    // 地面 + 网格地平线
+    var floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(ARENA * 2 + 24, ARENA * 2 + 24),
+      new THREE.MeshStandardMaterial({ color: COLOR.floor, roughness: 0.9 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    scene.add(floor);
+    var grid = new THREE.GridHelper(ARENA * 2 + 24, 22, COLOR.gridA, COLOR.gridB);
+    grid.position.y = 0.01;
+    scene.add(grid);
+
+    // 玩家：自发光光球 + 随身点光源
+    player = new THREE.Mesh(
+      new THREE.SphereGeometry(0.55, 32, 24),
+      new THREE.MeshStandardMaterial({
+        color: COLOR.player, emissive: COLOR.player, emissiveIntensity: 0.65, roughness: 0.3
+      })
+    );
+    player.position.set(0, 0.55, 0);
+    playerLight = new THREE.PointLight(COLOR.player, 1.1, 9);
+    player.add(playerLight);
+    scene.add(player);
+
+    raycaster = new THREE.Raycaster();
+    groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    pointerNDC = new THREE.Vector2();
+
+    spawnGems();
+    spawnEnemies();
+    buildLivesHud();
+    bindEvents();
+    animate();
+  }
+
+  // ---------- 星屑 ----------
+  function randomArenaPos(minDistFromCenter) {
+    // 在场地内随机取一点，保证离中心足够远（不在玩家脸上刷新）
+    for (var tries = 0; tries < 30; tries++) {
+      var x = (Math.random() * 2 - 1) * (ARENA - 1.5);
+      var z = (Math.random() * 2 - 1) * (ARENA - 1.5);
+      if (Math.sqrt(x * x + z * z) > minDistFromCenter) return { x: x, z: z };
+    }
+    return { x: ARENA - 2, z: ARENA - 2 };
+  }
+
+  function spawnGems() {
+    var geo = new THREE.IcosahedronGeometry(0.34, 0);
+    for (var i = 0; i < GEM_COUNT; i++) {
+      var mat = new THREE.MeshStandardMaterial({
+        color: COLOR.gem, emissive: COLOR.gem, emissiveIntensity: 0.7, roughness: 0.35
+      });
+      var gem = new THREE.Mesh(geo, mat);
+      var pos = randomArenaPos(3);
+      gem.position.set(pos.x, 0.75, pos.z);
+      gem.userData = {
+        phase: Math.random() * Math.PI * 2,   // 上下浮动相位
+        popIn: 0                              // 出生缩放动画进度
+      };
+      gem.scale.setScalar(0.001);
+      scene.add(gem);
+      gems.push(gem);
+    }
+  }
+
+  function respawnGem(gem) {
+    var pos = randomArenaPos(4);
+    gem.position.set(pos.x, 0.75, pos.z);
+    gem.userData.phase = Math.random() * Math.PI * 2;
+    gem.userData.popIn = 0;
+    gem.scale.setScalar(0.001);
+  }
+
+  // ---------- 干扰者（红色方块，沿固定轴正弦巡逻） ----------
+  function spawnEnemies() {
+    var geo = new THREE.BoxGeometry(0.9, 0.9, 0.9);
+    for (var i = 0; i < ENEMY_COUNT; i++) {
+      var mat = new THREE.MeshStandardMaterial({
+        color: COLOR.enemy, emissive: COLOR.enemy, emissiveIntensity: 0.45, roughness: 0.5
+      });
+      var enemy = new THREE.Mesh(geo, mat);
+      var axis = i % 2 === 0 ? 'x' : 'z';                 // 一半横巡、一半纵巡
+      var fixed = (Math.random() * 2 - 1) * (ARENA - 3);  // 巡逻轨道的固定坐标
+      enemy.userData = {
+        axis: axis,
+        center: fixed,
+        range: 4 + Math.random() * 8,                     // 巡逻半径
+        speed: 0.5 + Math.random() * 0.7,                 // 角速度
+        phase: Math.random() * Math.PI * 2
+      };
+      enemy.position.y = 0.45;
+      enemy.position[axis === 'x' ? 'z' : 'x'] = fixed;
+      scene.add(enemy);
+      enemies.push(enemy);
+    }
+  }
+
+  // ---------- 输入 ----------
+  function bindEvents() {
+    window.addEventListener('resize', function () {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    window.addEventListener('keydown', function (e) {
+      keys[e.key.toLowerCase()] = true;
+      if (e.key === ' ' && (state === 'ready' || state === 'over')) startGame();
+    });
+    window.addEventListener('keyup', function (e) { keys[e.key.toLowerCase()] = false; });
+
+    var dom = renderer.domElement;
+    function updatePointer(e) {
+      var rect = dom.getBoundingClientRect();
+      pointerNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      pointerNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointerNDC, camera);
+      var hit = raycaster.ray.intersectPlane(groundPlane, new THREE.Vector3());
+      if (hit) {
+        // 手指指向 clamp 在场地内
+        hit.x = Math.max(-ARENA, Math.min(ARENA, hit.x));
+        hit.z = Math.max(-ARENA, Math.min(ARENA, hit.z));
+        pointerTarget = hit;
+      }
+    }
+    dom.addEventListener('pointerdown', function (e) {
+      pointerDown = true; updatePointer(e);
+    });
+    dom.addEventListener('pointermove', function (e) {
+      if (pointerDown) updatePointer(e);
+    });
+    window.addEventListener('pointerup', function () { pointerDown = false; pointerTarget = null; });
+
+    document.getElementById('btnStart').addEventListener('click', startGame);
+    document.getElementById('btnRetry').addEventListener('click', startGame);
+  }
+
+  // ---------- 流程 ----------
+  function resetRound() {
+    score = 0; lives = 3; timeLeft = GAME_TIME;
+    invincible = 0; shake = 0; elapsed = 0;
+    playerVel.x = 0; playerVel.z = 0;
+    player.position.set(0, 0.55, 0);
+    player.visible = true;
+    for (var i = 0; i < gems.length; i++) respawnGem(gems[i]);
+    enemies.forEach(function (en, idx) {
+      en.userData.phase = Math.random() * Math.PI * 2;
+    });
+    refreshHud(true);
+  }
+
+  function startGame() {
+    SFX.start();
+    resetRound();
+    state = 'playing';
+    ovStart.classList.add('hide');
+    ovOver.classList.add('hide');
+  }
+
+  function endGame() {
+    state = 'over';
+    SFX.over();
+    if (score > best) {
+      best = score;
+      try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) {}
+    }
+    document.getElementById('finalScore').textContent = score;
+    document.getElementById('bestScore').textContent = best;
+    setTimeout(function () { if (state === 'over') ovOver.classList.remove('hide'); }, 450);
+  }
+
+  // ---------- HUD ----------
+  function buildLivesHud() {
+    hudLives.innerHTML = '';
+    for (var i = 0; i < 3; i++) {
+      var d = document.createElement('div');
+      d.className = 'life';
+      hudLives.appendChild(d);
+    }
+  }
+  function refreshHud(force) {
+    hudScore.textContent = score;
+    var t = Math.ceil(timeLeft);
+    hudTime.textContent = t;
+    hudTime.className = 'num' + (t <= 10 ? ' danger' : '');
+    var items = hudLives.children;
+    for (var i = 0; i < items.length; i++) {
+      items[i].className = i < lives ? 'life' : 'life off';
+    }
+  }
+
+  // ---------- 更新 ----------
+  function updatePlayer(dt) {
+    var accel = 42;
+    // 键盘
+    var ix = (keys['d'] || keys['arrowright'] ? 1 : 0) - (keys['a'] || keys['arrowleft'] ? 1 : 0);
+    var iz = (keys['s'] || keys['arrowdown'] ? 1 : 0) - (keys['w'] || keys['arrowup'] ? 1 : 0);
+    playerVel.x += ix * accel * dt;
+    playerVel.z += iz * accel * dt;
+
+    // 触屏 / 鼠标拖动：朝手指落点加速
+    if (pointerDown && pointerTarget) {
+      var dx = pointerTarget.x - player.position.x;
+      var dz = pointerTarget.z - player.position.z;
+      var d = Math.sqrt(dx * dx + dz * dz);
+      if (d > 0.3) {
+        playerVel.x += (dx / d) * accel * dt;
+        playerVel.z += (dz / d) * accel * dt;
+      }
+    }
+
+    // 阻尼 + 限速：任何帧率下速度稳定
+    var damping = Math.exp(-4 * dt);
+    playerVel.x *= damping; playerVel.z *= damping;
+    var speed = Math.sqrt(playerVel.x * playerVel.x + playerVel.z * playerVel.z);
+    if (speed > MAX_SPEED) {
+      playerVel.x = playerVel.x / speed * MAX_SPEED;
+      playerVel.z = playerVel.z / speed * MAX_SPEED;
+    }
+
+    player.position.x += playerVel.x * dt;
+    player.position.z += playerVel.z * dt;
+
+    // 场地边界
+    if (player.position.x < -ARENA) { player.position.x = -ARENA; playerVel.x = 0; }
+    if (player.position.x >  ARENA) { player.position.x =  ARENA; playerVel.x = 0; }
+    if (player.position.z < -ARENA) { player.position.z = -ARENA; playerVel.z = 0; }
+    if (player.position.z >  ARENA) { player.position.z =  ARENA; playerVel.z = 0; }
+
+    // 移动时轻微滚动，增强"驾驶感"
+    player.rotation.z -= playerVel.x * dt * 0.6;
+    player.rotation.x += playerVel.z * dt * 0.6;
+
+    // 无敌帧闪烁
+    if (invincible > 0) {
+      invincible -= dt;
+      player.visible = Math.floor(invincible * 12) % 2 === 0;
+      if (invincible <= 0) player.visible = true;
+    }
+  }
+
+  function updateGems(dt) {
+    for (var i = 0; i < gems.length; i++) {
+      var gem = gems[i];
+      // 出生缩放动画
+      if (gem.userData.popIn < 1) {
+        gem.userData.popIn = Math.min(1, gem.userData.popIn + dt * 3.5);
+        var s = 1 - Math.pow(1 - gem.userData.popIn, 3);   // easeOutCubic
+        gem.scale.setScalar(Math.max(0.001, s));
+      }
+      gem.rotation.y += dt * 1.6;
+      gem.rotation.x += dt * 0.7;
+      gem.position.y = 0.75 + Math.sin(elapsed * 2 + gem.userData.phase) * 0.18;
+
+      // 收集判定
+      var dx = gem.position.x - player.position.x;
+      var dz = gem.position.z - player.position.z;
+      if (dx * dx + dz * dz < 1.1 * 1.1) {
+        score++;
+        SFX.collect();
+        respawnGem(gem);
+        refreshHud();
+      }
+    }
+  }
+
+  function updateEnemies(dt) {
+    for (var i = 0; i < enemies.length; i++) {
+      var en = enemies[i];
+      var offset = Math.sin(elapsed * en.userData.speed * Math.PI + en.userData.phase) * en.userData.range;
+      en.position[en.userData.axis] = en.userData.center + offset;
+      en.rotation.y += dt * 1.2;
+      en.rotation.x += dt * 0.9;
+
+      // 碰撞判定（无敌帧内跳过）
+      if (invincible <= 0) {
+        var dx = en.position.x - player.position.x;
+        var dz = en.position.z - player.position.z;
+        var hitDist = 0.55 + 0.62;
+        if (dx * dx + dz * dz < hitDist * hitDist) {
+          lives--;
+          invincible = 1.5;
+          shake = 0.55;
+          SFX.hit();
+          refreshHud();
+          if (lives <= 0) { timeLeft = 0; }
+        }
+      }
+    }
+  }
+
+  function updateCamera(dt) {
+    // 第三人称跟随：位置向目标点指数趋近，稳而不飘
+    var targetX = player.position.x * 0.85;
+    var targetZ = player.position.z * 0.85 + 11;
+    var follow = 1 - Math.pow(0.0001, dt);
+    camera.position.x += (targetX - camera.position.x) * follow;
+    camera.position.z += (targetZ - camera.position.z) * follow;
+    camera.position.y = 9.5;
+
+    // 受击震屏
+    if (shake > 0.001) {
+      camera.position.x += (Math.random() - 0.5) * shake;
+      camera.position.y += (Math.random() - 0.5) * shake * 0.5;
+      shake *= Math.exp(-5 * dt);
+    }
+    camera.lookAt(player.position.x * 0.5, 0.5, player.position.z * 0.5);
+  }
+
+  // ---------- 主循环 ----------
+  function animate() {
+    requestAnimationFrame(animate);
+    var dt = Math.min(clock.getDelta(), 0.05);
+
+    if (state === 'playing') {
+      elapsed += dt;
+      timeLeft -= dt;
+      updatePlayer(dt);
+      updateGems(dt);
+      updateEnemies(dt);
+      if (timeLeft <= 0 || lives <= 0) { timeLeft = 0; endGame(); }
+      refreshHud();
+    } else if (state === 'ready') {
+      // 开始界面：玩家球自动绕场慢游，当背景动效
+      elapsed += dt;
+      player.position.x = Math.sin(elapsed * 0.5) * 5;
+      player.position.z = Math.cos(elapsed * 0.5) * 5;
+      updateGems(dt);
+      updateEnemies(dt);
+    }
+
+    updateCamera(dt);
+    renderer.render(scene, camera);
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

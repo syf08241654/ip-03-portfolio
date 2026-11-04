@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="宋一凡">
+<title>作品 1-B · 引力花园（交互动态）· 宋一凡</title>
+<style>
+  /* 去掉默认边距与滚动条，保证画布铺满不出现滚动条错位 */
+  html, body { margin: 0; padding: 0; overflow: hidden; }
+  canvas { display: block; }
+  /* 禁止双击选中文字带来的闪动 */
+  body { user-select: none; -webkit-user-select: none; }
+</style>
+<!-- p5.js 1.9.4（CDN 引入） -->
+<script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
+</head>
+<body>
+<script>
+/*
+ * 《引力花园》 —— 交互动态
+ * 作者：宋一凡（GitHub: songyifan）
+ *
+ * 交互说明（4 种，满足"至少 2 种"）：
+ *   1. 鼠标移动 —— 粒子被光标吸引，向光标聚拢
+ *   2. 鼠标点击 —— 产生一圈珊瑚色冲击波，把附近粒子推开（波纹就是操作反馈）
+ *   3. 键盘空格 —— 切换 吸引 / 排斥 模式，左上角文字与光标圆环颜色即时反馈
+ *   4. 时间变化 —— 粒子呼吸式缩放，光标外环随时间旋转
+ *
+ * 必须有 draw()：✓；所有运动都乘以 deltaTime，帧率变化时速度依然稳定。
+ * for 循环：粒子初始化、每帧更新、冲击波绘制。
+ *
+ * 配色意图（全画共 5 色）：
+ *   深夜蓝背景统一画面；暖金粒子是主体；
+ *   珊瑚色只用于冲击波与"排斥"警示；青绿色只用于"吸引"指示；
+ *   米白只用于文字。颜色各有职责，不随机取色。
+ */
+
+// ---------- 配色（共 5 色） ----------
+const COLOR_BG    = { r: 14, g: 18, b: 32 };    // 深夜蓝 · 背景
+const COLOR_WARM  = '#FFB454';                   // 暖金 · 粒子主体
+const COLOR_CORAL = '#FF5D73';                   // 珊瑚 · 冲击波 / 排斥模式
+const COLOR_TEAL  = '#4ECDC4';                   // 青绿 · 吸引模式指示
+const COLOR_CREAM = '#F5F0E6';                   // 米白 · 文字
+
+// ---------- 全局状态 ----------
+let particles = [];       // 所有粒子
+let ripples = [];         // 点击产生的冲击波
+let repelMode = false;    // false=吸引模式, true=排斥模式
+let timeSec = 0;          // 累计运行时间（秒），驱动"时间变化"交互
+
+const PARTICLE_COUNT = 140;   // 粒子总数
+const RIPPLE_LIFE = 0.7;      // 冲击波存活时长（秒）
+const RIPPLE_RANGE = 280;     // 冲击波影响半径（像素）
+const MAX_SPEED = 260;        // 粒子速度上限，保证画面稳定不乱跑
+
+// ---------- 初始化（只跑一次） ----------
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  background(COLOR_BG.r, COLOR_BG.g, COLOR_BG.b);
+
+  // 用 for 循环批量生成粒子
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    particles.push({
+      x: random(width),
+      y: random(height),
+      vx: 0,                          // 水平速度（像素/秒）
+      vy: 0,                          // 垂直速度（像素/秒）
+      baseSize: random(3, 7),         // 基础半径
+      breathePhase: random(TWO_PI)    // 呼吸相位，让粒子错开缩放
+    });
+  }
+}
+
+// 窗口变化时重设画布（超出边界的粒子会在下一帧自动环绕回来）
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+
+// ---------- 主循环（必须有 draw()） ----------
+function draw() {
+  // 把 deltaTime 压到 50ms 以内，切后台回来不会瞬移
+  const dt = min(deltaTime / 1000, 0.05);
+  timeSec += dt;
+
+  // 用一层半透明背景盖住上一帧，形成柔和拖尾
+  // （每帧 25% 左右的遮盖度，画面过渡平滑、不闪烁）
+  noStroke();
+  fill(COLOR_BG.r, COLOR_BG.g, COLOR_BG.b, 64);
+  rect(0, 0, width, height);
+
+  // --- 逐个更新并绘制粒子（for 循环） ---
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    applyMouseForce(p, dt);     // 交互 1 / 3：鼠标引力或斥力
+    applyDamping(p, dt);        // 阻尼 + 限速，保证运动稳定
+    wrapAroundEdges(p);         // 出界后从另一侧回来
+    drawParticle(p);            // 交互 4：呼吸缩放绘制
+  }
+
+  drawRipples(dt);              // 交互 2：冲击波
+  drawCursorRing();             // 交互 3 / 4：光标指示环
+  drawHintText();               // 操作提示 + 模式反馈
+}
+
+// ---------- 鼠标引力 / 斥力（交互 1 + 交互 3） ----------
+function applyMouseForce(p, dt) {
+  const dx = mouseX - p.x;
+  const dy = mouseY - p.y;
+  const distToMouse = sqrt(dx * dx + dy * dy) + 0.001;   // +0.001 防止除以 0
+
+  // 越近吸力越强；80px 起步封顶，避免个别粒子受力爆炸
+  const strength = 36000 / max(distToMouse, 80);
+  const direction = repelMode ? -1 : 1;                  // 空格切换正负
+
+  p.vx += (dx / distToMouse) * strength * direction * dt;
+  p.vy += (dy / distToMouse) * strength * direction * dt;
+}
+
+// ---------- 阻尼 + 限速：动画速度始终在正常范围 ----------
+function applyDamping(p, dt) {
+  // 指数衰减阻尼：无论帧率如何，衰减速率都一致
+  const damping = exp(-2.5 * dt);
+  p.vx *= damping;
+  p.vy *= damping;
+
+  // 限速
+  const speed = sqrt(p.vx * p.vx + p.vy * p.vy);
+  if (speed > MAX_SPEED) {
+    p.vx = (p.vx / speed) * MAX_SPEED;
+    p.vy = (p.vy / speed) * MAX_SPEED;
+  }
+
+  p.x += p.vx * dt;
+  p.y += p.vy * dt;
+}
+
+// ---------- 边缘环绕 ----------
+function wrapAroundEdges(p) {
+  const margin = 20;
+  if (p.x < -margin)     p.x = width + margin;
+  if (p.x > width + margin)  p.x = -margin;
+  if (p.y < -margin)     p.y = height + margin;
+  if (p.y > height + margin) p.y = -margin;
+}
+
+// ---------- 绘制单个粒子（交互 4：呼吸缩放） ----------
+function drawParticle(p) {
+  const breathe = 1 + 0.25 * sin(timeSec * 2 + p.breathePhase);
+  noStroke();
+  fill(COLOR_WARM);
+  circle(p.x, p.y, p.baseSize * 2 * breathe);
+}
+
+// ---------- 冲击波（交互 2：点击） ----------
+function mousePressed() {
+  ripples.push({
+    x: mouseX,
+    y: mouseY,
+    radius: 10,
+    life: RIPPLE_LIFE,
+    maxLife: RIPPLE_LIFE
+  });
+
+  // 给附近粒子一个向外的推力，推力随距离衰减
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    const dx = p.x - mouseX;
+    const dy = p.y - mouseY;
+    const d = sqrt(dx * dx + dy * dy) + 0.001;
+    if (d < RIPPLE_RANGE) {
+      const kick = (1 - d / RIPPLE_RANGE) * 420;
+      p.vx += (dx / d) * kick;
+      p.vy += (dy / d) * kick;
+    }
+  }
+}
+
+// 绘制并更新所有冲击波圈
+function drawRipples(dt) {
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    const rp = ripples[i];
+    rp.radius += 420 * dt;      // 波纹扩散
+    rp.life -= dt;              // 生命值倒计时
+
+    if (rp.life <= 0) {
+      ripples.splice(i, 1);
+      continue;
+    }
+
+    const lifeRatio = rp.life / rp.maxLife;
+    noFill();
+    // 珊瑚色 + 透明度随生命值衰减，产生淡出效果
+    stroke(255, 93, 115, 255 * lifeRatio);
+    strokeWeight(1 + 3 * lifeRatio);
+    circle(rp.x, rp.y, rp.radius * 2);
+  }
+  noStroke();
+}
+
+// ---------- 光标指示环（交互 3 / 4：颜色随模式切换，角度随时间旋转） ----------
+function drawCursorRing() {
+  noFill();
+  stroke(repelMode ? COLOR_CORAL : COLOR_TEAL);   // 模式反馈：吸引=青绿，排斥=珊瑚
+  strokeWeight(2);
+
+  const spinAngle = timeSec * 1.5;                // 随时间旋转
+  arc(mouseX, mouseY, 46, 46, spinAngle, spinAngle + PI * 1.5);
+  noStroke();
+
+  fill(repelMode ? COLOR_CORAL : COLOR_TEAL);
+  circle(mouseX, mouseY, 5);                      // 中心点
+  noFill();
+}
+
+// ---------- 文字提示与模式反馈 ----------
+function drawHintText() {
+  fill(COLOR_CREAM);
+  textAlign(LEFT, TOP);
+  textSize(15);
+  text('引力花园 · 当前模式：' + (repelMode ? '排斥（珊瑚环）' : '吸引（青绿环）'), 20, 18);
+
+  textSize(12);
+  fill(245, 240, 230, 150);   // 米白 + 透明度，弱化提示文字
+  text('移动鼠标 引动粒子 · 点击 释放冲击波 · 按空格 切换模式', 20, 44);
+}
+
+// ---------- 键盘交互（交互 3） ----------
+function keyPressed() {
+  if (key === ' ') {
+    repelMode = !repelMode;
+    return false;   // 阻止空格键滚动页面
+  }
+}
+</script>
+</body>
+</html>
