@@ -4,7 +4,7 @@
 > 源码：GitHub **私有仓库** ｜ 网站：**Cloudflare Pages** 公开访问
 > 在线地址：部署后形如 `https://<你的站点名>.pages.dev`
 
-**作者：宋一凡** ｜ GitHub：[@songyifan](https://github.com/songyifan)
+**作者：宋一凡** ｜ GitHub：[@syf08241654](https://github.com/syf08241654)
 
 ## 网站结构
 
@@ -47,7 +47,7 @@ works/three-game.html   作品三《星屑猎手》               Three.js 小�
    git add .
    git commit -m "作业三: 作品集网站（三个作品 + 关于我）"
    git branch -M main
-   git remote add origin https://github.com/songyifan/ip-03-portfolio.git
+   git remote add origin https://github.com/syf08241654/ip-03-portfolio.git
    git push -u origin main
    ```
 
