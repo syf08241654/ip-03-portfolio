@@ -1,8 +1,8 @@
 # 宋一凡 · 创意编码作品集（作业三）
 
 > 作业三：成果展示与汇报 · 作品集网站（40%）
-> 源码：GitHub **私有仓库** ｜ 网站：**Cloudflare Pages** 公开访问
-> 在线地址：部署后形如 `https://<你的站点名>.pages.dev`
+> 源码：GitHub 仓库 [syf08241654/ip-03-portfolio](https://github.com/syf08241654/ip-03-portfolio) ｜ 网站：GitHub Pages 公开访问
+> **在线地址：https://syf08241654.github.io/ip-03-portfolio/**
 
 **作者：宋一凡** ｜ GitHub：[@syf08241654](https://github.com/syf08241654)
 
@@ -35,35 +35,26 @@ works/three-game.html   作品三《星屑猎手》               Three.js 小�
   - p5.js 1.9.4（jsDelivr CDN）
   - Three.js r128（jsDelivr CDN，MIT License）
 - 网站与作品**未使用任何第三方图片、字体素材**；所有视觉均由代码实时绘制
-- 教师已被添加为本仓库 Collaborator（只读查看源码）
+- 仓库为公开仓库，老师与任何人可直接查看源码
 
-## 部署到 Cloudflare Pages（六步）
+## 部署（GitHub Pages，已完成）
 
-1. 在 GitHub 新建仓库（本作业要求 **Private 私有**），名字建议 `ip-03-portfolio`，不要勾选自动初始化
-2. 推送本目录：
+1. 仓库已推送至 `https://github.com/syf08241654/ip-03-portfolio`（main 分支）
+2. **Settings → Pages** → Source 选 `Deploy from a branch`，Branch `main` / `(root)`，Save
+3. 约 1 分钟构建完成，访问 **https://syf08241654.github.io/ip-03-portfolio/**
+   - 索引页：`.../ip-03-portfolio/`
+   - 作品一《霓虹穿梭》：`.../ip-03-portfolio/works/neon-drift.html`
+   - 作品二《引力花园》：`.../ip-03-portfolio/works/dynamic.html`
+   - 作品三《星屑猎手》：`.../ip-03-portfolio/works/three-game.html`
+4. 之后每次 `git push` 到 main，Pages 会自动重新构建
 
-   ```bash
-   git init
-   git add .
-   git commit -m "作业三: 作品集网站（三个作品 + 关于我）"
-   git branch -M main
-   git remote add origin https://github.com/syf08241654/ip-03-portfolio.git
-   git push -u origin main
-   ```
-
-3. 登录 [dash.cloudflare.com](https://dash.cloudflare.com) → 左侧 **Workers & Pages** → **Create** → **Pages** 标签
-4. 选择 **Connect to Git** → 授权 GitHub → 选中 `ip-03-portfolio` 仓库 → Begin setup
-5. 构建设置全部留空即可：Framework preset 选 `None`，Build command 留空，**Build output directory 填 `/`** → Save and Deploy
-6. 约 1 分钟后获得 `https://ip-03-portfolio.pages.dev` 公开网址 —— 源码仍是私有的，网址任何人可看，这就是"私的是仓库，不是网站"
+> 备选：若后续希望仓库保持私有、网站仍公开，可使用 Cloudflare Pages（GitHub 免费版不支持私有仓库开启 Pages）。步骤：dash.cloudflare.com → Workers & Pages → Create → Pages → Connect to Git → 选仓库 → Framework 选 None、Build output directory 填 `/` → Deploy。
 
 > 注意：作品二顶栏的「GitHub Pages 版」链接指向作业一仓库，需要该仓库 Pages 已开启才可访问；内嵌区域用的是本站副本，不受影响。
 
-## 邀请老师查看源码（私有仓库必做，否则"代码规范"项没有分）
+## 作业一源码（可选，作为素材出处）
 
-1. 打开私有仓库 → **Settings → Collaborators → Add people**
-2. 输入老师的 GitHub 用户名 → 选择权限 **Read**（个人仓库若只提供 Write 选项，直接邀请即可，老师可只读查看代码，不会改动）
-3. 老师在邮箱或 GitHub 通知里接受邀请后，即可查看私有源码
-4. 提交时在作业说明里附上仓库地址 + 已邀请截图
+作业一的《暖阳 · 群山》《引力花园》单独放在公开仓库 `syf08241654/ip-01-p5-works`，线上地址 https://syf08241654.github.io/ip-01-p5-works/ 。本站作品二的 iframe 内嵌的是本地副本 `works/p5-dynamic.html`，不依赖该仓库是否在线。
 
 ## 本地运行
 
